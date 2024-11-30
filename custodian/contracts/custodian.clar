@@ -5,7 +5,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Enhanced NFT Escrow Contract with Explicit Receipt Verification
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; 
 
 ;; NFT Trait Definition
 (define-trait nft-trait
@@ -20,6 +20,8 @@
 (define-constant ERR-ESCROW-EXPIRED u101)
 (define-constant ERR-INVALID-TRANSFER u102)
 (define-constant ERR-NFT-NOT-RECEIVED u103)
+(define-constant ERR-INAVALID-ADDRESS u104)
+(define-constant ERR-INVALID-PRICE u105)
 
 ;; Contract Constants
 (define-constant CONTRACT-OWNER tx-sender)
@@ -52,7 +54,10 @@
   }
 )
 
-;; Confirm NFT Receipt Manually
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Core functions
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Logging function, Chainhook will listen to these and deal with the data
 (define-public (confirm-nft-receipt 
   (nft-contract principal)
   (nft-id uint)
@@ -68,6 +73,8 @@
       ) 
       (err ERR-INVALID-TRANSFER)
     ))) (err ERR-NOT-AUTHORIZED))
+    (asserts! (is-valid-nft-contract nft-contract) (err ERR-INAVALID-ADDRESS))
+    (asserts! (> nft-id u0) (err ERR-INVALID-TRANSFER))
 
     ;; Mark NFT as received
     (map-set nft-receipts 
@@ -102,7 +109,15 @@
   (buyer principal)
   (sale-price uint)
 )
-  (begin
+
+  (if (is-standard buyer)
+    (begin
+    ;; Validate buyer address
+    (asserts! (is-standard buyer) (err ERR-INAVALID-ADDRESS))
+    ;; Validate NFT Contract
+    (asserts! (is-valid-nft-contract (contract-of nft-contract)) (err ERR-INAVALID-ADDRESS))
+    ;; Validate sale price
+    (asserts! (> sale-price u0) (err ERR-INVALID-PRICE))
     ;; Validate seller ownership and transfer capability
     (asserts! 
       (is-ok (contract-call? nft-contract transfer 
@@ -112,6 +127,8 @@
       )) 
       (err ERR-INVALID-TRANSFER)
     )
+    ;; Check that sale price is greater than zero
+    (asserts! (> sale-price u0) (err ERR-INVALID-PRICE))
     
     ;; Initialize NFT Receipt Tracking
     (map-set nft-receipts 
@@ -153,6 +170,8 @@
     })
     
     (ok true)
+    )
+    (err ERR-INAVALID-ADDRESS)
   )
 )
 
@@ -180,7 +199,10 @@
       ) 
       (err ERR-INVALID-TRANSFER)
     )))
-    
+
+    ;; Verify NFT Contract
+    (asserts! (is-valid-nft-contract (contract-of nft-contract)) (err ERR-INAVALID-ADDRESS))
+
     ;; Verify NFT Receipt
     (asserts! 
       (get received nft-receipt) 
@@ -198,6 +220,8 @@
       (err ERR-ESCROW-EXPIRED)
     )
     
+    (asserts! (> nft-id u0) (err ERR-INVALID-TRANSFER))
+
     ;; Transfer NFT to Buyer
     (try! 
       (as-contract 
@@ -248,6 +272,11 @@
       (err ERR-INVALID-TRANSFER)
     )))
     
+    ;; Verify NFT Contract
+    (asserts! (is-valid-nft-contract (contract-of nft-contract)) (err ERR-INAVALID-ADDRESS))
+
+    (asserts! (> nft-id u0) (err ERR-INVALID-TRANSFER))
+    
     (asserts! 
       (> block-height (get expiry-block escrow-details)) 
       (err ERR-ESCROW-EXPIRED)
@@ -286,7 +315,9 @@
     (ok true)
   )
 )
-
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Setting, getting and utility functions
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Utility: Get Current Escrow Status
 (define-read-only (get-escrow-status 
   (nft-contract principal)
@@ -311,3 +342,15 @@
     }
   )
 )
+;; Utility: Check if Principal is a valid NFT Contract
+(define-read-only (is-valid-nft-contract (contract principal))
+  (match (principal-destruct? contract)
+    ok-result 
+      (is-some (get name ok-result))
+    err-result 
+      false
+  )
+)
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; End of Contract!
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
