@@ -1,0 +1,33 @@
+name: nft-escrow-transfer-hook
+networks: 
+  - mainnet
+  - testnet
+chain: stacks
+
+predicate:
+  method: stx_transfer
+  params:
+    # Dynamically match buyer and seller addresses from escrow transaction
+    sender: "{{ BUYER_ADDRESS }}"
+    recipient: "{{ SELLER_ADDRESS }}"
+    amount: "{{ SALE_PRICE }}"
+
+action:
+  type: contract_call
+  contract_address: "{{ ESCROW_CONTRACT_ADDRESS }}"
+  contract_name: custodian
+  method: complete-nft-transfer
+  parameters:
+    - type: principal
+      value: "{{ NFT_CONTRACT_ADDRESS }}"
+    - type: uint
+      value: "{{ NFT_TOKEN_ID }}"
+
+options:
+  max_retries: 3
+  retry_delay: 5000
+  timeout: 30000
+
+log:
+  level: info
+  format: json
