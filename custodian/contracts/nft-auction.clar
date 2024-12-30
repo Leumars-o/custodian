@@ -47,6 +47,10 @@
 )
 
 ;; Read-only functions
+(define-read-only (get-auction (auction-id uint))
+    (map-get? auctions { auction-id: auction-id })
+)
+
 (define-read-only (get-bid (auction-id uint) (bidder principal))
   (map-get? bids { auction-id: auction-id, bidder: bidder })
 )
@@ -59,56 +63,34 @@
                              (reserve-price uint)
                              (min-increment uint)
                              (duration uint))
-  (let 
-    (
-      (auction-id (+ (var-get auction-nonce) u1))
-      (end-block (+ block-height duration))
+    (let 
+        (
+            (auction-id (+ (var-get auction-nonce) u1))
+            (end-block (+ block-height duration))
+        )
+        (try! (contract-call? .nft-trait transfer nft-id tx-sender (as-contract tx-sender)))
+        
+        (map-set auctions
+            { auction-id: auction-id }
+            {
+                nft-contract: nft-contract,
+                nft-id: nft-id,
+                seller: tx-sender,
+                start-price: start-price,
+                reserve-price: reserve-price,
+                min-increment: min-increment,
+                end-block: end-block,
+                highest-bid: u0,
+                highest-bidder: none,
+                status: "active"
+            }
+        )
+        
+        (var-set auction-nonce auction-id)
+        (ok auction-id)
     )
-    (try! (contract-call? nft-contract transfer nft-id tx-sender (as-contract tx-sender)))
-    
-    (map-set auctions
-      { auction-id: auction-id }
-      {
-        nft-contract: nft-contract,
-        nft-id: nft-id,
-        seller: tx-sender,
-        start-price: start-price,
-        reserve-price: reserve-price,
-        min-increment: min-increment,
-        end-block: end-block,
-        highest-bid: u0,
-        highest-bidder: none,
-        status: "active"
-      }
-    )
-    
-    (var-set auction-nonce auction-id)
-    (ok auction-id)
-  )
 )
 
-(define-public (place-bid (auction-id uint) (bid-amount uint))
-  (let
-    (
-      (auction (unwrap! (get-auction auction-id) ERR-NO-AUCTION))
-    )
-    
-    (asserts! (is-eq (get status auction) "active") ERR-AUCTION-ENDED)
-    (asserts! (<= block-height (get end-block auction)) ERR-AUCTION-ENDED)
-    (asserts! (>= bid-amount (+ (get start-price auction) 
-                               (get min-increment auction))) ERR-BID-TOO-LOW)
-    (asserts! (> bid-amount (get highest-bid auction)) ERR-BID-TOO-LOW)
-    
-    (map-set auctions auction-id
-      (merge auction {
-        highest-bid: bid-amount,
-        highest-bidder: (some tx-sender)
-      })
-    )
-    
-    (ok true)
-  )
-)
 
 (define-public (end-auction (auction-id uint))
   (let
